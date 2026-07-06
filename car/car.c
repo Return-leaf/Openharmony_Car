@@ -16,81 +16,54 @@
 #include "cmsis_os2.h"
 #include "iot_gpio.h"
 #include "iot_gpio_ex.h"
+#include "iot_i2c.h"
 #include "ohos_init.h"
 #include "car.h"
 #include "car_wifi.h"
 #include "car_websocket.h"
 
-/* ---------- 方向引脚 ---------- */
-#define PIN_IN1  IOT_IO_NAME_GPIO_1
-#define PIN_IN2  IOT_IO_NAME_GPIO_4
-#define PIN_IN3  IOT_IO_NAME_GPIO_14
-#define PIN_IN4  IOT_IO_NAME_GPIO_3
+/* ---------- PCF8575 I2C (GPIO15=SDA, GPIO16=SCL, bus=1) ---------- */
+#define PCF8575_ADDR  0x20
+#define I2C_BUS       1
 
-#define FUNC_IN1  IOT_IO_FUNC_GPIO_1_GPIO
-#define FUNC_IN2  IOT_IO_FUNC_GPIO_4_GPIO
-#define FUNC_IN3  IOT_IO_FUNC_GPIO_14_GPIO
-#define FUNC_IN4  IOT_IO_FUNC_GPIO_3_GPIO
+/* PCF8575 位映射: P0=IN1 P1=IN2 P2=IN3 P3=IN4 P4=ENA P5=ENB */
+#define P_IN1  0
+#define P_IN2  1
+#define P_IN3  2
+#define P_IN4  3
+#define P_ENA  4
+#define P_ENB  5
+#define M(p)   (1 << (p))
+
+static int pcf8575_write(unsigned short val)
+{
+    unsigned char d[2] = { val & 0xFF, (val >> 8) & 0xFF };
+    unsigned int ret = IoTI2cWrite(I2C_BUS, PCF8575_ADDR, d, 2);
+    if (ret != 0) printf("[PCF] I2C err=%u\r\n", ret);
+    return (ret == 0) ? 0 : -1;
+}
+
+static unsigned short g_dir = 0;
+
+static void car_flush(void)
+{
+    if (pcf8575_write(g_dir | M(P_ENA) | M(P_ENB)) != 0) {
+        /* 重试一次 */
+        pcf8575_write(g_dir | M(P_ENA) | M(P_ENB));
+    }
+}
 
 /* ==================================================================
- * 方向控制
+ * 方向控制（只设内存位，car_flush 统一写 I2C）
  * ================================================================== */
 
-void STOP(void)
-{
-    IoTGpioSetOutputVal(PIN_IN1, 0);
-    IoTGpioSetOutputVal(PIN_IN2, 0);
-    IoTGpioSetOutputVal(PIN_IN3, 0);
-    IoTGpioSetOutputVal(PIN_IN4, 0);
-}
-
-void FORWARD(void)
-{
-    IoTGpioSetOutputVal(PIN_IN1, 1);
-    IoTGpioSetOutputVal(PIN_IN2, 0);
-    IoTGpioSetOutputVal(PIN_IN3, 1);
-    IoTGpioSetOutputVal(PIN_IN4, 0);
-}
-
-void LEFT(void)
-{
-    IoTGpioSetOutputVal(PIN_IN1, 1);
-    IoTGpioSetOutputVal(PIN_IN2, 0);
-    IoTGpioSetOutputVal(PIN_IN3, 0);
-    IoTGpioSetOutputVal(PIN_IN4, 0);
-}
-
-void RIGHT(void)
-{
-    IoTGpioSetOutputVal(PIN_IN1, 0);
-    IoTGpioSetOutputVal(PIN_IN2, 0);
-    IoTGpioSetOutputVal(PIN_IN3, 1);
-    IoTGpioSetOutputVal(PIN_IN4, 0);
-}
-
-void BACK(void)
-{
-    IoTGpioSetOutputVal(PIN_IN1, 0);
-    IoTGpioSetOutputVal(PIN_IN2, 1);
-    IoTGpioSetOutputVal(PIN_IN3, 0);
-    IoTGpioSetOutputVal(PIN_IN4, 1);
-}
-
-void TANKRIGHT(void)
-{
-    IoTGpioSetOutputVal(PIN_IN1, 0);
-    IoTGpioSetOutputVal(PIN_IN2, 1);
-    IoTGpioSetOutputVal(PIN_IN3, 1);
-    IoTGpioSetOutputVal(PIN_IN4, 0);
-}
-
-void TANKLEFT(void)
-{
-    IoTGpioSetOutputVal(PIN_IN1, 1);
-    IoTGpioSetOutputVal(PIN_IN2, 0);
-    IoTGpioSetOutputVal(PIN_IN3, 0);
-    IoTGpioSetOutputVal(PIN_IN4, 1);
-}
+void STOP(void)       { g_dir = 0; }
+void FORWARD(void)    { g_dir = M(P_IN1) | M(P_IN3); }
+void BACK(void)       { g_dir = M(P_IN2) | M(P_IN4); }
+void LEFT(void)       { g_dir = M(P_IN1); }
+void RIGHT(void)      { g_dir = M(P_IN3); }
+void TANKRIGHT(void)  { g_dir = M(P_IN1) | M(P_IN4); }
+void TANKLEFT(void)   { g_dir = M(P_IN2) | M(P_IN3); }
 
 /* ==================================================================
  * 遥控指令解析
@@ -99,6 +72,7 @@ void TANKLEFT(void)
 void car_execute_command(const char *dir, int speed)
 {
     if (dir == NULL) return;
+    (void)speed;  /* 全速，暂不调速 */
 
     if (strcmp(dir, "stop") == 0) {
         STOP();
@@ -115,8 +89,10 @@ void car_execute_command(const char *dir, int speed)
     } else if (strcmp(dir, "drift_r") == 0) {
         TANKRIGHT();
     } else {
-        printf("[CAR] Unknown command: %s:%d\r\n", dir, speed);
+        printf("[CAR] Unknown: %s:%d\r\n", dir, speed);
+        return;
     }
+    car_flush();
 }
 
 /* ==================================================================
@@ -127,23 +103,20 @@ void car_main(void *arg)
 {
     (void)arg;
 
-    IoTGpioInit(PIN_IN1);
-    IoTGpioInit(PIN_IN2);
-    IoTGpioInit(PIN_IN3);
-    IoTGpioInit(PIN_IN4);
+    /* I2C 引脚配置：GPIO15=SDA, GPIO16=SCL（参考 OLED/AHT30 示例） */
+    IoTGpioInit(IOT_IO_NAME_GPIO_15);
+    IoTGpioInit(IOT_IO_NAME_GPIO_16);
+    IoSetFunc(IOT_IO_NAME_GPIO_15, IOT_IO_FUNC_GPIO_15_I2C1_SDA);
+    IoSetFunc(IOT_IO_NAME_GPIO_16, IOT_IO_FUNC_GPIO_16_I2C1_SCL);
+    IoTI2cInit(I2C_BUS, 100000);
 
-    IoSetFunc(PIN_IN1, FUNC_IN1);
-    IoSetFunc(PIN_IN2, FUNC_IN2);
-    IoSetFunc(PIN_IN3, FUNC_IN3);
-    IoSetFunc(PIN_IN4, FUNC_IN4);
-
-    IoTGpioSetDir(PIN_IN1, IOT_GPIO_DIR_OUT);
-    IoTGpioSetDir(PIN_IN2, IOT_GPIO_DIR_OUT);
-    IoTGpioSetDir(PIN_IN3, IOT_GPIO_DIR_OUT);
-    IoTGpioSetDir(PIN_IN4, IOT_GPIO_DIR_OUT);
-
-    STOP();
-    printf("[CAR] GPIO initialized\r\n");
+    /* 测试 PCF8575 是否响应 */
+    unsigned char t[2] = {0, 0};
+    if (IoTI2cWrite(I2C_BUS, PCF8575_ADDR, t, 2) == 0) {
+        printf("[CAR] PCF8575 OK (bus=%d, addr=0x%02X)\r\n", I2C_BUS, PCF8575_ADDR);
+    } else {
+        printf("[CAR] PCF8575 no response! Check wiring\r\n");
+    }
 
     if (car_wifi_connect() != 0) {
         printf("[CAR] WiFi connect failed!\r\n");

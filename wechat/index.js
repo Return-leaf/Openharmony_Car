@@ -11,6 +11,8 @@ Page({
 
   socket: null,
   rect: null,
+  heartbeatTimer: null,
+  currentCmd: 'stop:0',
 
   onLoad() {
     const savedIp = wx.getStorageSync('car_server_ip');
@@ -120,6 +122,15 @@ Page({
       else dir = 'forward';
       this.doSend(dir);
     }
+
+    /* 启动心跳：手指按住不动时 touchMove 不会触发，心跳每 300ms 重发保证不丢指令 */
+    if (!this.heartbeatTimer) {
+      this.heartbeatTimer = setInterval(() => {
+        if (this.data.connected && this.currentCmd) {
+          this.socket.send({ data: this.currentCmd });
+        }
+      }, 300);
+    }
   },
 
   doSend(dir) {
@@ -131,12 +142,15 @@ Page({
       finalDir = (dir === 'left') ? 'drift_l' : 'drift_r';
     }
 
+    this.currentCmd = `${finalDir}:${speed}`;
     this.sendMsg(finalDir, speed);
     this.setData({ lastCmdName: finalDir });
     wx.vibrateShort({ type: 'light' });
   },
 
   touchEnd() {
+    if (this.heartbeatTimer) { clearInterval(this.heartbeatTimer); this.heartbeatTimer = null; }
+    this.currentCmd = 'stop:0';
     this.initCoordinates();
     this.sendMsg('stop', 0);
     this.setData({ lastCmdName: '停止' });
