@@ -42,9 +42,9 @@
 static int pcf8575_write(unsigned short val)
 {
     unsigned char d[2] = { val & 0xFF, (val >> 8) & 0xFF };
-    unsigned int ret = IoTI2cWrite(I2C_ID, PCF8575_ADDR, d, 2);
+    unsigned int ret = IoTI2cWrite(g_i2c_id, g_pcf_addr, d, 2);
     if (ret != 0) {
-        printf("[PCF] I2C write fail: ret=%u\r\n", ret);
+        printf("[PCF] write fail bus=%d addr=0x%02X ret=%u\r\n", g_i2c_id, g_pcf_addr, ret);
     }
     return (ret == 0) ? 0 : -1;
 }
@@ -102,21 +102,44 @@ void car_execute_command(const char *dir, int speed)
  * 主控制线程
  * ================================================================== */
 
+/* I2C 自动扫描：试不同总线号和 PCF8575 地址 (0x20-0x27) */
+static int g_i2c_id  = 0;
+static int g_pcf_addr = 0x20;
+
+static void i2c_scan(void)
+{
+    int bus, addr, found = 0;
+    unsigned char dummy[2] = {0, 0};
+
+    for (bus = 0; bus < 2; bus++) {
+        if (IoTI2cInit(bus, I2C_BAUDRATE) != 0) {
+            printf("[I2C] bus %d init fail\r\n", bus);
+            continue;
+        }
+        for (addr = 0x20; addr <= 0x27; addr++) {
+            if (IoTI2cWrite(bus, addr, dummy, 2) == 0) {
+                printf("[I2C] FOUND device at bus=%d addr=0x%02X\r\n", bus, addr);
+                g_i2c_id   = bus;
+                g_pcf_addr = addr;
+                found = 1;
+            }
+        }
+        if (!found) IoTI2cDeinit(bus);
+    }
+    if (found) {
+        printf("[I2C] using bus=%d addr=0x%02X\r\n", g_i2c_id, g_pcf_addr);
+    } else {
+        printf("[I2C] PCF8575 not found on any bus! Check wiring\r\n");
+        /* 用默认配置继续跑，方便远程调试 */
+        IoTI2cInit(0, I2C_BAUDRATE);
+    }
+}
+
 void car_main(void *arg)
 {
     (void)arg;
 
-    if (IoTI2cInit(I2C_ID, I2C_BAUDRATE) != 0) {
-        printf("[CAR] I2C init fail!\r\n");
-        return;
-    }
-    /* 检查 PCF8575 是否响应（仿 Arduino begin()->isConnected()） */
-    if (pcf8575_write(0x0000) != 0) {
-        printf("[CAR] PCF8575 not responding at 0x%02X! Check wiring/SDA/SCL\r\n", PCF8575_ADDR);
-        /* 不 return，让 WiFi+WS 继续跑，便于远程调试 */
-    } else {
-        printf("[CAR] PCF8575 OK (0x%02X)\r\n", PCF8575_ADDR);
-    }
+    i2c_scan();
 
     if (car_wifi_connect() != 0) {
         printf("[CAR] WiFi connect failed!\r\n");
