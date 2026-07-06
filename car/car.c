@@ -39,6 +39,9 @@
 #define M_ENA  (1 << P_ENA)
 #define M_ENB  (1 << P_ENB)
 
+static int g_i2c_id  = 0;
+static int g_pcf_addr = 0x20;
+
 static int pcf8575_write(unsigned short val)
 {
     unsigned char d[2] = { val & 0xFF, (val >> 8) & 0xFF };
@@ -103,9 +106,6 @@ void car_execute_command(const char *dir, int speed)
  * ================================================================== */
 
 /* I2C 自动扫描：试不同总线号和 PCF8575 地址 (0x20-0x27) */
-static int g_i2c_id  = 0;
-static int g_pcf_addr = 0x20;
-
 static void i2c_scan(void)
 {
     int bus, addr, found = 0;
