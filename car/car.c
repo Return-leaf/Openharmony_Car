@@ -32,25 +32,41 @@
 #define P_ENA   4   /* 右使能 */
 #define P_ENB   5   /* 左使能 */
 
-static unsigned short g_pcf_state = 0;
+/* 位掩码 */
+#define M_IN1   (1 << P_IN1)
+#define M_IN2   (1 << P_IN2)
+#define M_IN3   (1 << P_IN3)
+#define M_IN4   (1 << P_IN4)
+#define M_ENA   (1 << P_ENA)
+#define M_ENB   (1 << P_ENB)
+#define M_DIR   (M_IN1 | M_IN2 | M_IN3 | M_IN4)
 
 static void pcf8575_write(unsigned short val)
 {
-    g_pcf_state = val;
     unsigned char data[2];
-    data[0] = val & 0xFF;         /* 低字节 */
-    data[1] = (val >> 8) & 0xFF;  /* 高字节 */
+    data[0] = val & 0xFF;
+    data[1] = (val >> 8) & 0xFF;
     IoTI2cWrite(I2C_ID, PCF8575_ADDR, data, 2);
 }
 
-/* 设置指定 pin 的值 */
-static void pcf_set_bit(int bit, int val)
+/* 方向位模式 */
+#define DIR_STOP      0x0000
+#define DIR_FORWARD   (M_IN1 | M_IN3)
+#define DIR_BACK      (M_IN2 | M_IN4)
+#define DIR_LEFT      (M_IN1)
+#define DIR_RIGHT     (M_IN3)
+#define DIR_TANK_L    (M_IN2 | M_IN3)
+#define DIR_TANK_R    (M_IN1 | M_IN4)
+
+static unsigned short g_dir = DIR_STOP;
+static int g_speed_on = 0;
+
+/* 一次 I2C 写入：方向 + 使能合并 */
+static void car_flush(void)
 {
-    if (val)
-        g_pcf_state |= (1 << bit);
-    else
-        g_pcf_state &= ~(1 << bit);
-    pcf8575_write(g_pcf_state);
+    unsigned short val = g_dir;
+    if (g_speed_on) val |= (M_ENA | M_ENB);
+    pcf8575_write(val);
 }
 
 /* ==================================================================
@@ -59,74 +75,19 @@ static void pcf_set_bit(int bit, int val)
 
 static void car_set_speed(int speed)
 {
-    if (speed > 0) {
-        pcf_set_bit(P_ENA, 1);
-        pcf_set_bit(P_ENB, 1);
-    } else {
-        pcf_set_bit(P_ENA, 0);
-        pcf_set_bit(P_ENB, 0);
-    }
+    g_speed_on = (speed > 0);
 }
 
 /* ==================================================================
- * 方向控制
- * ================================================================== */
+ * 方向控制（只改内存，不写 I2C，car_flush 统一写入） ================================================================== */
 
-void STOP(void)
-{
-    pcf_set_bit(P_IN1, 0);
-    pcf_set_bit(P_IN2, 0);
-    pcf_set_bit(P_IN3, 0);
-    pcf_set_bit(P_IN4, 0);
-}
-
-void FORWARD(void)
-{
-    pcf_set_bit(P_IN1, 1);
-    pcf_set_bit(P_IN2, 0);
-    pcf_set_bit(P_IN3, 1);
-    pcf_set_bit(P_IN4, 0);
-}
-
-void LEFT(void)
-{
-    pcf_set_bit(P_IN1, 1);
-    pcf_set_bit(P_IN2, 0);
-    pcf_set_bit(P_IN3, 0);
-    pcf_set_bit(P_IN4, 0);
-}
-
-void RIGHT(void)
-{
-    pcf_set_bit(P_IN1, 0);
-    pcf_set_bit(P_IN2, 0);
-    pcf_set_bit(P_IN3, 1);
-    pcf_set_bit(P_IN4, 0);
-}
-
-void BACK(void)
-{
-    pcf_set_bit(P_IN1, 0);
-    pcf_set_bit(P_IN2, 1);
-    pcf_set_bit(P_IN3, 0);
-    pcf_set_bit(P_IN4, 1);
-}
-
-void TANKRIGHT(void)
-{
-    pcf_set_bit(P_IN1, 0);
-    pcf_set_bit(P_IN2, 1);
-    pcf_set_bit(P_IN3, 1);
-    pcf_set_bit(P_IN4, 0);
-}
-
-void TANKLEFT(void)
-{
-    pcf_set_bit(P_IN1, 1);
-    pcf_set_bit(P_IN2, 0);
-    pcf_set_bit(P_IN3, 0);
-    pcf_set_bit(P_IN4, 1);
-}
+void STOP(void)       { g_dir = DIR_STOP; }
+void FORWARD(void)    { g_dir = DIR_FORWARD; }
+void BACK(void)       { g_dir = DIR_BACK; }
+void LEFT(void)       { g_dir = DIR_LEFT; }
+void RIGHT(void)      { g_dir = DIR_RIGHT; }
+void TANKRIGHT(void)  { g_dir = DIR_TANK_R; }
+void TANKLEFT(void)   { g_dir = DIR_TANK_L; }
 
 /* ==================================================================
  * 遥控指令解析
@@ -159,7 +120,9 @@ void car_execute_command(const char *dir, int speed)
         TANKRIGHT();
     } else {
         printf("[CAR] Unknown command: %s:%d\r\n", dir, speed);
+        return;
     }
+    car_flush();  /* 方向+速度合并一次 I2C 写入 */
 }
 
 /* ==================================================================
