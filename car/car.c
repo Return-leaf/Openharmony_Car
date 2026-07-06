@@ -1,12 +1,11 @@
 /*
- * 小车控制 + WebSocket 遥控 - 主文件
+ * 小车控制 + WebSocket 遥控 — PCF8575 I2C IO 扩展版
  * NL63pro (WS63) 开发板
  *
- * GPIO 方向引脚:
- *   GPIO1  - IN1 - 右边前进
- *   GPIO4  - IN2 - 右边后退
- *   GPIO14 - IN3 - 左边前进
- *   GPIO3  - IN4 - 左边后退
+ * PCF8575 P0-P5 映射:
+ *   P0 = IN1 右前    P1 = IN2 右后
+ *   P2 = IN3 左前    P3 = IN4 左后
+ *   P4 = ENA 右使能  P5 = ENB 左使能
  */
 
 #include <stdio.h>
@@ -14,23 +13,60 @@
 #include <string.h>
 
 #include "cmsis_os2.h"
-#include "iot_gpio.h"
-#include "iot_gpio_ex.h"
+#include "iot_i2c.h"
 #include "ohos_init.h"
 #include "car.h"
 #include "car_wifi.h"
 #include "car_websocket.h"
 
-/* ---------- 方向引脚 ---------- */
-#define PIN_IN1  IOT_IO_NAME_GPIO_1
-#define PIN_IN2  IOT_IO_NAME_GPIO_4
-#define PIN_IN3  IOT_IO_NAME_GPIO_14
-#define PIN_IN4  IOT_IO_NAME_GPIO_3
+/* ---------- PCF8575 ---------- */
+#define PCF8575_ADDR   0x20
+#define I2C_ID         0
+#define I2C_BAUDRATE   100000
 
-#define FUNC_IN1  IOT_IO_FUNC_GPIO_1_GPIO
-#define FUNC_IN2  IOT_IO_FUNC_GPIO_4_GPIO
-#define FUNC_IN3  IOT_IO_FUNC_GPIO_14_GPIO
-#define FUNC_IN4  IOT_IO_FUNC_GPIO_3_GPIO
+/* PCF8575 输出位 */
+#define P_IN1   0   /* 右前 */
+#define P_IN2   1   /* 右后 */
+#define P_IN3   2   /* 左前 */
+#define P_IN4   3   /* 左后 */
+#define P_ENA   4   /* 右使能 */
+#define P_ENB   5   /* 左使能 */
+
+static unsigned short g_pcf_state = 0;
+
+static void pcf8575_write(unsigned short val)
+{
+    g_pcf_state = val;
+    unsigned char data[2];
+    data[0] = val & 0xFF;         /* 低字节 */
+    data[1] = (val >> 8) & 0xFF;  /* 高字节 */
+    IoTI2cWrite(I2C_ID, PCF8575_ADDR, data, 2);
+}
+
+/* 设置指定 pin 的值 */
+static void pcf_set_bit(int bit, int val)
+{
+    if (val)
+        g_pcf_state |= (1 << bit);
+    else
+        g_pcf_state &= ~(1 << bit);
+    pcf8575_write(g_pcf_state);
+}
+
+/* ==================================================================
+ * 使能控制
+ * ================================================================== */
+
+static void car_set_speed(int speed)
+{
+    if (speed > 0) {
+        pcf_set_bit(P_ENA, 1);
+        pcf_set_bit(P_ENB, 1);
+    } else {
+        pcf_set_bit(P_ENA, 0);
+        pcf_set_bit(P_ENB, 0);
+    }
+}
 
 /* ==================================================================
  * 方向控制
@@ -38,58 +74,58 @@
 
 void STOP(void)
 {
-    IoTGpioSetOutputVal(PIN_IN1, 0);
-    IoTGpioSetOutputVal(PIN_IN2, 0);
-    IoTGpioSetOutputVal(PIN_IN3, 0);
-    IoTGpioSetOutputVal(PIN_IN4, 0);
+    pcf_set_bit(P_IN1, 0);
+    pcf_set_bit(P_IN2, 0);
+    pcf_set_bit(P_IN3, 0);
+    pcf_set_bit(P_IN4, 0);
 }
 
 void FORWARD(void)
 {
-    IoTGpioSetOutputVal(PIN_IN1, 1);
-    IoTGpioSetOutputVal(PIN_IN2, 0);
-    IoTGpioSetOutputVal(PIN_IN3, 1);
-    IoTGpioSetOutputVal(PIN_IN4, 0);
+    pcf_set_bit(P_IN1, 1);
+    pcf_set_bit(P_IN2, 0);
+    pcf_set_bit(P_IN3, 1);
+    pcf_set_bit(P_IN4, 0);
 }
 
 void LEFT(void)
 {
-    IoTGpioSetOutputVal(PIN_IN1, 1);
-    IoTGpioSetOutputVal(PIN_IN2, 0);
-    IoTGpioSetOutputVal(PIN_IN3, 0);
-    IoTGpioSetOutputVal(PIN_IN4, 0);
+    pcf_set_bit(P_IN1, 1);
+    pcf_set_bit(P_IN2, 0);
+    pcf_set_bit(P_IN3, 0);
+    pcf_set_bit(P_IN4, 0);
 }
 
 void RIGHT(void)
 {
-    IoTGpioSetOutputVal(PIN_IN1, 0);
-    IoTGpioSetOutputVal(PIN_IN2, 0);
-    IoTGpioSetOutputVal(PIN_IN3, 1);
-    IoTGpioSetOutputVal(PIN_IN4, 0);
+    pcf_set_bit(P_IN1, 0);
+    pcf_set_bit(P_IN2, 0);
+    pcf_set_bit(P_IN3, 1);
+    pcf_set_bit(P_IN4, 0);
 }
 
 void BACK(void)
 {
-    IoTGpioSetOutputVal(PIN_IN1, 0);
-    IoTGpioSetOutputVal(PIN_IN2, 1);
-    IoTGpioSetOutputVal(PIN_IN3, 0);
-    IoTGpioSetOutputVal(PIN_IN4, 1);
+    pcf_set_bit(P_IN1, 0);
+    pcf_set_bit(P_IN2, 1);
+    pcf_set_bit(P_IN3, 0);
+    pcf_set_bit(P_IN4, 1);
 }
 
 void TANKRIGHT(void)
 {
-    IoTGpioSetOutputVal(PIN_IN1, 0);
-    IoTGpioSetOutputVal(PIN_IN2, 1);
-    IoTGpioSetOutputVal(PIN_IN3, 1);
-    IoTGpioSetOutputVal(PIN_IN4, 0);
+    pcf_set_bit(P_IN1, 0);
+    pcf_set_bit(P_IN2, 1);
+    pcf_set_bit(P_IN3, 1);
+    pcf_set_bit(P_IN4, 0);
 }
 
 void TANKLEFT(void)
 {
-    IoTGpioSetOutputVal(PIN_IN1, 1);
-    IoTGpioSetOutputVal(PIN_IN2, 0);
-    IoTGpioSetOutputVal(PIN_IN3, 0);
-    IoTGpioSetOutputVal(PIN_IN4, 1);
+    pcf_set_bit(P_IN1, 1);
+    pcf_set_bit(P_IN2, 0);
+    pcf_set_bit(P_IN3, 0);
+    pcf_set_bit(P_IN4, 1);
 }
 
 /* ==================================================================
@@ -101,18 +137,25 @@ void car_execute_command(const char *dir, int speed)
     if (dir == NULL) return;
 
     if (strcmp(dir, "stop") == 0) {
+        car_set_speed(0);
         STOP();
     } else if (strcmp(dir, "forward") == 0) {
+        car_set_speed(speed);
         FORWARD();
     } else if (strcmp(dir, "backward") == 0) {
+        car_set_speed(speed);
         BACK();
     } else if (strcmp(dir, "left") == 0) {
+        car_set_speed(speed);
         LEFT();
     } else if (strcmp(dir, "right") == 0) {
+        car_set_speed(speed);
         RIGHT();
     } else if (strcmp(dir, "drift_l") == 0) {
+        car_set_speed(255);
         TANKLEFT();
     } else if (strcmp(dir, "drift_r") == 0) {
+        car_set_speed(255);
         TANKRIGHT();
     } else {
         printf("[CAR] Unknown command: %s:%d\r\n", dir, speed);
@@ -127,30 +170,25 @@ void car_main(void *arg)
 {
     (void)arg;
 
-    IoTGpioInit(PIN_IN1);
-    IoTGpioInit(PIN_IN2);
-    IoTGpioInit(PIN_IN3);
-    IoTGpioInit(PIN_IN4);
+    /* I2C 初始化 */
+    if (IoTI2cInit(I2C_ID, I2C_BAUDRATE) != 0) {
+        printf("[CAR] I2C init failed!\r\n");
+        return;
+    }
 
-    IoSetFunc(PIN_IN1, FUNC_IN1);
-    IoSetFunc(PIN_IN2, FUNC_IN2);
-    IoSetFunc(PIN_IN3, FUNC_IN3);
-    IoSetFunc(PIN_IN4, FUNC_IN4);
-
-    IoTGpioSetDir(PIN_IN1, IOT_GPIO_DIR_OUT);
-    IoTGpioSetDir(PIN_IN2, IOT_GPIO_DIR_OUT);
-    IoTGpioSetDir(PIN_IN3, IOT_GPIO_DIR_OUT);
-    IoTGpioSetDir(PIN_IN4, IOT_GPIO_DIR_OUT);
-
+    /* 全部输出清零 */
+    pcf8575_write(0x0000);
     STOP();
-    printf("[CAR] GPIO initialized\r\n");
+    printf("[CAR] PCF8575 I2C ready (addr=0x%02X)\r\n", PCF8575_ADDR);
 
+    /* WiFi */
     if (car_wifi_connect() != 0) {
         printf("[CAR] WiFi connect failed!\r\n");
         return;
     }
     printf("[CAR] WiFi connected, IP=%s\r\n", car_wifi_get_ip_str());
 
+    /* WebSocket */
     car_websocket_server_start(8080);
 }
 
