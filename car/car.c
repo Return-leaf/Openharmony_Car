@@ -46,13 +46,10 @@ static void pcf8575_write(unsigned short val)
 }
 
 static unsigned short g_dir = 0;
-static int g_spd = 0;
 
 static void car_flush(void)
 {
-    unsigned short v = g_dir;
-    if (g_spd) v |= (M_ENA | M_ENB);
-    pcf8575_write(v);
+    pcf8575_write(g_dir | M_ENA | M_ENB);  /* ENA/ENB 始终 HIGH，全速 */
 }
 
 /* ==================================================================
@@ -74,7 +71,7 @@ void TANKLEFT(void)   { g_dir = M_IN2 | M_IN3; }
 void car_execute_command(const char *dir, int speed)
 {
     if (dir == NULL) return;
-    g_spd = (speed > 0);
+    (void)speed;  /* ENA/ENB 始终 HIGH，全速，speed 暂不使用 */
 
     if (strcmp(dir, "stop") == 0) {
         STOP();
