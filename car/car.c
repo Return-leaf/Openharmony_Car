@@ -39,10 +39,14 @@
 #define M_ENA  (1 << P_ENA)
 #define M_ENB  (1 << P_ENB)
 
-static void pcf8575_write(unsigned short val)
+static int pcf8575_write(unsigned short val)
 {
     unsigned char d[2] = { val & 0xFF, (val >> 8) & 0xFF };
-    IoTI2cWrite(I2C_ID, PCF8575_ADDR, d, 2);
+    unsigned int ret = IoTI2cWrite(I2C_ID, PCF8575_ADDR, d, 2);
+    if (ret != 0) {
+        printf("[PCF] I2C write fail: ret=%u\r\n", ret);
+    }
+    return (ret == 0) ? 0 : -1;
 }
 
 static unsigned short g_dir = 0;
@@ -106,8 +110,13 @@ void car_main(void *arg)
         printf("[CAR] I2C init fail!\r\n");
         return;
     }
-    pcf8575_write(0x0000);
-    printf("[CAR] PCF8575 ready (0x%02X)\r\n", PCF8575_ADDR);
+    /* 检查 PCF8575 是否响应（仿 Arduino begin()->isConnected()） */
+    if (pcf8575_write(0x0000) != 0) {
+        printf("[CAR] PCF8575 not responding at 0x%02X! Check wiring/SDA/SCL\r\n", PCF8575_ADDR);
+        /* 不 return，让 WiFi+WS 继续跑，便于远程调试 */
+    } else {
+        printf("[CAR] PCF8575 OK (0x%02X)\r\n", PCF8575_ADDR);
+    }
 
     if (car_wifi_connect() != 0) {
         printf("[CAR] WiFi connect failed!\r\n");
