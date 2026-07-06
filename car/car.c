@@ -111,7 +111,7 @@ static void i2c_scan(void)
     int bus, addr, found = 0;
     unsigned char dummy[2] = {0, 0};
 
-    for (bus = 0; bus < 2; bus++) {
+    for (bus = 0; bus < 4; bus++) {
         if (IoTI2cInit(bus, I2C_BAUDRATE) != 0) {
             printf("[I2C] bus %d init fail\r\n", bus);
             continue;
