@@ -1,0 +1,44 @@
+﻿<!-- ==================== 页面容器 ==================== -->
+<view class="page-container">
+  <!-- 连接状态栏：点击可设置小车 IP 地址 -->
+  <view class="status-bar {{connected ? 'online' : 'offline'}}" bindtap="showSettings">
+    <view class="dot"></view>
+    <text>{{connected ? '已连接 ' + serverIp : (serverIp ? '连接中... ' + serverIp : '点击设置小车IP')}}</text>
+  </view>
+
+  <!-- ==================== 摇杆控制区 ==================== -->
+  <view class="control-box">
+    <view class="title">方向操控</view>
+    <!-- 摇杆底座 -->
+    <view class="joystick-base" id="base" bindtouchmove="touchMove" bindtouchend="touchEnd">
+      <!-- 底座中心定位孔（装饰） -->
+      <view class="center-hole"></view>
+      <!-- 摇杆滑块：位置由 stickStyle 动态控制 -->
+      <view class="joystick-stick" style="{{stickStyle}}"></view>
+    </view>
+    <!-- 当前指令名显示 -->
+    <view class="cmd-display">当前状态：<text class="cmd-text">{{lastCmdName}}</text></view>
+  </view>
+
+  <!-- ==================== 功能面板 ==================== -->
+  <view class="function-panel">
+    <!-- 漂移模式开关：active 类名控制红色高亮 -->
+    <view class="drift-toggle {{driftMode ? 'active' : ''}}" bindtap="toggleDrift">
+      <text class="fire-icon">🔥</text>
+      <text>DRIFT 模式: {{driftMode ? '开启' : '关闭'}}</text>
+    </view>
+
+    <!-- 挡位选择区 -->
+    <view class="gear-section">
+      <view class="gear-title">基础动力等级</view>
+      <!-- 三挡按钮：data-val 传递挡位值给 setGear -->
+      <view class="gear-group">
+        <view class="gear-item {{gear==120?'on':''}}" bindtap="setGear" data-val="120">低速</view>
+        <view class="gear-item {{gear==180?'on':''}}" bindtap="setGear" data-val="180">中速</view>
+        <view class="gear-item {{gear==255?'on':''}}" bindtap="setGear" data-val="255">全速</view>
+      </view>
+      <!-- 速度进度条：宽度由 speedStyle 控制 -->
+      <view class="speed-progress"><view class="bar" style="{{speedStyle}}"></view></view>
+    </view>
+  </view>
+</view>

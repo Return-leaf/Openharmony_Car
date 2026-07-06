@@ -1,0 +1,11 @@
+{
+  "pages": [
+    "index"
+  ],
+  "window": {
+    "navigationBarTitleText": "小车遥控器",
+    "navigationBarBackgroundColor": "#121212",
+    "navigationBarTextStyle": "white",
+    "backgroundColor": "#121212"
+  }
+}

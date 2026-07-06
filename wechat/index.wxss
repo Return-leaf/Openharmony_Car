@@ -1,0 +1,51 @@
+﻿/* ==================== 全局布局 ==================== */
+.page-container { height: 100vh; background: #121212; display: flex; flex-direction: column; align-items: center; color: #fff; }
+
+/* ==================== 连接状态栏 ==================== */
+/* 背景卡片，flex 水平排列 */
+.status-bar { margin-top: 40rpx; padding: 10rpx 30rpx; background: #1E1E1E; border-radius: 30rpx; display: flex; align-items: center; font-size: 22rpx; border: 1rpx solid #333; }
+/* 圆点指示灯：12×12rpx */
+.dot { width: 12rpx; height: 12rpx; border-radius: 50%; margin-right: 12rpx; }
+/* 连接成功：绿色带发光 */
+.online .dot { background: #00FF9D; box-shadow: 0 0 10rpx #00FF9D; }
+/* 断开连接：红色 */
+.offline .dot { background: #FF4D4F; }
+
+/* ==================== 摇杆控制区 ==================== */
+.control-box { width: 90%; background: #1E1E1E; margin-top: 30rpx; border-radius: 40rpx; padding: 40rpx 0; display: flex; flex-direction: column; align-items: center; }
+.title { font-size: 24rpx; color: #666; margin-bottom: 30rpx; letter-spacing: 4rpx; }
+/* 底座：300×300rpx 圆形，深色背景 */
+.joystick-base { width: 300rpx; height: 300rpx; background: #262626; border-radius: 150rpx; border: 6rpx solid #333; position: relative; }
+/* 中心定位孔：40×40rpx 小圆点 */
+.center-hole { position: absolute; width: 40rpx; height: 40rpx; background: #121212; border-radius: 20rpx; left: 130rpx; top: 130rpx; }
+/* 摇杆滑块：110×110rpx，渐变色（青→紫），绝对定位跟随手指 */
+.joystick-stick { width: 110rpx; height: 110rpx; background: linear-gradient(135deg, #00DBDE 0%, #FC00FF 100%); border-radius: 55rpx; position: absolute; z-index: 100; box-shadow: 0 8rpx 25rpx rgba(0,0,0,0.5); }
+.cmd-display { margin-top: 25rpx; font-size: 24rpx; color: #666; }
+.cmd-text { color: #FC00FF; font-weight: bold; }
+
+/* ==================== 漂移按钮 ==================== */
+.function-panel { width: 90%; margin-top: 30rpx; }
+/* 默认状态：深灰背景 */
+.drift-toggle {
+  width: 100%; padding: 35rpx 0; border-radius: 25rpx; background: #262626;
+  display: flex; align-items: center; justify-content: center; font-weight: bold;
+  border: 2rpx solid #333; transition: all 0.3s;
+}
+/* 激活状态：红色背景 + 红色发光阴影 */
+.drift-toggle.active {
+  background: #FF4D4F; color: #fff; border-color: #FF7875;
+  box-shadow: 0 0 30rpx rgba(255, 77, 79, 0.4);
+}
+.fire-icon { margin-right: 15rpx; font-size: 32rpx; }
+
+/* ==================== 挡位选择区 ==================== */
+.gear-section { margin-top: 30rpx; background: #1E1E1E; padding: 30rpx; border-radius: 30rpx; }
+.gear-title { font-size: 22rpx; color: #666; margin-bottom: 20rpx; text-align: center; }
+/* 三挡按钮：flex 等宽分布 */
+.gear-group { display: flex; justify-content: space-between; margin-bottom: 30rpx; }
+.gear-item { flex: 1; margin: 0 10rpx; padding: 20rpx 0; text-align: center; background: #262626; border-radius: 15rpx; font-size: 22rpx; color: #999; }
+/* 选中挡位：紫色高亮 */
+.gear-item.on { background: #FC00FF; color: #fff; box-shadow: 0 4rpx 15rpx rgba(252, 0, 255, 0.3); }
+/* 速度进度条：6rpx 细条，紫色填充 */
+.speed-progress { height: 6rpx; background: #121212; border-radius: 3rpx; overflow: hidden; }
+.bar { height: 100%; background: #FC00FF; transition: width 0.3s; }
