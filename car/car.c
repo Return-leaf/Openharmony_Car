@@ -44,8 +44,8 @@ static int pcf8575_write(unsigned short val)
     return (ret == 0) ? 0 : -1;
 }
 
-/* ---------- PWM 调速: GPIO5(PWM5,ch5,grp2) + GPIO10(PWM2,ch2,grp1) ---------- */
-#define PWM_R  5   /* 右轮 */
+/* ---------- PWM 调速: GPIO1(PWM1,ch1,grp0) + GPIO10(PWM2,ch2,grp1) ---------- */
+#define PWM_R  1   /* 右轮 */
 #define PWM_L  2   /* 左轮 */
 #define PWM_F  2000
 
@@ -54,8 +54,8 @@ static int g_pwm_ok = 0;
 static void pwm_lazy_init(void)
 {
     if (g_pwm_ok) return;
-    IoTGpioInit(IOT_IO_NAME_GPIO_5);
-    IoSetFunc(IOT_IO_NAME_GPIO_5, IOT_IO_FUNC_GPIO_5_PWM5_OUT);
+    IoTGpioInit(IOT_IO_NAME_GPIO_1);
+    IoSetFunc(IOT_IO_NAME_GPIO_1, IOT_IO_FUNC_GPIO_1_PWM1_OUT);
     IoTGpioInit(IOT_IO_NAME_GPIO_10);
     IoSetFunc(IOT_IO_NAME_GPIO_10, IOT_IO_FUNC_GPIO_10_PWM2_OUT);
     if (IoTPwmInit(PWM_R) != 0 || IoTPwmInit(PWM_L) != 0) {
@@ -63,7 +63,7 @@ static void pwm_lazy_init(void)
         return;
     }
     g_pwm_ok = 1;
-    printf("[CAR] PWM ready (ch5+ch2)\r\n");
+    printf("[CAR] PWM ready (ch1+ch2)\r\n");
 }
 
 static unsigned short speed_to_duty(int speed)
@@ -103,8 +103,8 @@ void FORWARD(void)    { g_dir = M(P_IN1) | M(P_IN3); }
 void BACK(void)       { g_dir = M(P_IN2) | M(P_IN4); }
 void LEFT(void)       { g_dir = M(P_IN1); }
 void RIGHT(void)      { g_dir = M(P_IN3); }
-void TANKRIGHT(void)  { g_dir = M(P_IN1) | M(P_IN4); }
-void TANKLEFT(void)   { g_dir = M(P_IN2) | M(P_IN3); }
+void TANKLEFT(void)   { g_dir = M(P_IN1) | M(P_IN4); }
+void TANKRIGHT(void)  { g_dir = M(P_IN2) | M(P_IN3); }
 
 /* ==================================================================
  * 遥控指令解析

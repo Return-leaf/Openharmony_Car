@@ -33,7 +33,7 @@
       <view class="gear-title">基础动力等级</view>
       <!-- 三挡按钮：data-val 传递挡位值给 setGear -->
       <view class="gear-group">
-        <view class="gear-item {{gear==120?'on':''}}" bindtap="setGear" data-val="120">低速</view>
+        <view class="gear-item {{gear==120?'on':''}}" bindtap="setGear" data-val="120">锁车</view>
         <view class="gear-item {{gear==180?'on':''}}" bindtap="setGear" data-val="180">中速</view>
         <view class="gear-item {{gear==255?'on':''}}" bindtap="setGear" data-val="255">全速</view>
       </view>
