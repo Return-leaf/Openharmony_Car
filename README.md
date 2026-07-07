@@ -1,6 +1,6 @@
 # OpenHarmony 小车 WebSocket 遥控 (PCF8575 I2C 版)
 
-基于 OpenHarmony (WS63/NL63pro) 的 WiFi 小车，通过 **PCF8575 I2C IO 扩展模块** 驱动 L298N/L9110S 电机驱动板，微信小程序摇杆实时遥控。**零 WS63 GPIO 占用**，全部 IO 留给后续外设。
+基于 OpenHarmony (WS63/NL63pro) 的 WiFi 小车，PCF8575 I2C IO 扩展模块驱动 L298N/L9110S 电机 + 四路 HC-SR04 超声波测距，微信小程序摇杆遥控。**零 WS63 GPIO 占用**。
 
 ---
 
@@ -9,25 +9,25 @@
 | 组件 | 型号/说明 |
 |------|----------|
 | 开发板 | NL63pro (HiSilicon WS63, LiteOS-M) |
-| IO 扩展 | PCF8575 (I2C, 16 路输出, 默认地址 0x20) |
+| IO 扩展 | PCF8575 (I2C, 16 路, 地址 0x20) |
 | 电机驱动 | L298N 或 L9110S (H 桥, 双路) |
-| 小车底盘 | 4 轮, 左右两侧电机并联 |
-| 通信 | WiFi STA 连接手机热点 (2.4GHz) |
+| 超声波 | HC-SR04 ×4 (前/后/左/右) |
+| 通信 | WiFi STA 2.4GHz 连接手机热点 |
 
 ### 开发板引脚布局 (NL63pro)
 
 ```
-左排 (从上到下)                    右排 (从上到下)
-1:  5V                              1:  IIC_SDA (GPIO15)
-2:  GND                             2:  IIC_SCL (GPIO16)
-3:  3.3V                            3:  IO_14 (GPIO14)
-4:  GND                             4:  IO_03 (GPIO3)
-5:  IO_01 (GPIO1)                   5:  GND
-6:  IO_04 (GPIO4)                   6:  IO_10 (GPIO10)
-7:  IO_13 (GPIO13)                  7:  GND
-8:  IO_08 (GPIO8)                   8:  RST
-9:  IO_07 (GPIO7)                   9:  IO_00 (GPIO0)
-10: IO_05 (GPIO5)                   10: IO_06 (GPIO6) ⚠️ 不可用!
+左排 (从上到下)              右排 (从上到下)
+1:  5V                        1:  IIC_SDA (GPIO15)
+2:  GND                       2:  IIC_SCL (GPIO16)
+3:  3.3V                      3:  IO_14 (GPIO14)
+4:  GND                       4:  IO_03 (GPIO3)
+5:  IO_01 (GPIO1)             5:  GND
+6:  IO_04 (GPIO4)             6:  IO_10 (GPIO10)
+7:  IO_13 (GPIO13)            7:  GND
+8:  IO_08 (GPIO8)             8:  RST
+9:  IO_07 (GPIO7)             9:  IO_00 (GPIO0)
+10: IO_05 (GPIO5)             10: IO_06 (GPIO6) ⚠️ 不可用!
 ```
 
 > ⚠️ **GPIO6 禁用**：配置为任何功能都会导致串口乱码和烧录失败。
@@ -35,73 +35,110 @@
 
 ### 接线
 
-| PCF8575 | 开发板 | 电机驱动板 |
-|---------|--------|----------|
-| VCC | 3.3V (左排 Pin3) | - |
-| GND | GND (左排 Pin2) | - |
-| SDA | IIC_SDA (右排 Pin1) | - |
-| SCL | IIC_SCL (右排 Pin2) | - |
-| INT (上划线) | 不接 | - |
-| P0 | - | IN1 (右轮前进) |
-| P1 | - | IN2 (右轮后退) |
-| P2 | - | IN3 (左轮前进) |
-| P3 | - | IN4 (左轮后退) |
-| P4 | - | IN1 (备用) |
-| P5 | - | IN2 (备用) |
-| P6-P15 | - | 空闲, 预留给其他外设 |
+#### 电机驱动 (PCF8575)
 
-### PWM 引脚（WS63 直连电机驱动板）
+| PCF8575 | 电机驱动板 | 功能 |
+|---------|----------|------|
+| P0 | IN1 | 右前 |
+| P1 | IN2 | 右后 |
+| P2 | IN3 | 左前 |
+| P3 | IN4 | 左后 |
+
+#### PWM 调速 (WS63 直连)
 
 | WS63 GPIO | 电机驱动板 | PWM 通道 |
 |-----------|----------|----------|
-| GPIO1 | ENA (右轮调速) | PWM1 |
-| GPIO10 | ENB (左轮调速) | PWM2 |
+| GPIO1 | ENA (右轮) | PWM1 |
+| GPIO10 | ENB (左轮) | PWM2 |
+
+#### 超声波 HC-SR04 (PCF8575)
+
+| 超声波 | 引脚 | PCF8575 | 位 |
+|--------|------|---------|-----|
+| 4路 | VCC | 5V (左排 Pin1) | - |
+| 4路 | GND | GND | - |
+| 4路 Trig | **并联** | **P4** | bit4 |
+| 前 Echo | | **P5** | bit5 |
+| 后 Echo | | **P6** | bit6 |
+| 左 Echo | | **P7** | bit7 |
+| 右 Echo | | **P17** | **bit15** ⚠️ |
+
+> ⚠️ **PCF8575 引脚号≠位号**。P0-P7 = bit0-7，P10-P17 = bit8-15。P17 在代码中是 bit15，**不是 bit17**。
+> `1U << 17` 溢出 16 位被截断为 0，导致右 Echo 永远读不到。这是实际踩过的坑。
+
+### PCF8575 引脚分配总览
+
+| PCF8575 | 位 | 功能 |
+|---------|-----|------|
+| P0 | bit0 | IN1 (右前) |
+| P1 | bit1 | IN2 (右后) |
+| P2 | bit2 | IN3 (左前) |
+| P3 | bit3 | IN4 (左后) |
+| P4 | bit4 | Trig (4路超声波并联) |
+| P5 | bit5 | 前 Echo |
+| P6 | bit6 | 后 Echo |
+| P7 | bit7 | 左 Echo |
+| P10 | bit8 | 空闲 |
+| P11 | bit9 | 空闲 |
+| P12 | bit10 | 空闲 |
+| P13 | bit11 | 空闲 |
+| P14 | bit12 | 空闲 |
+| P15 | bit13 | 空闲 |
+| P16 | bit14 | 空闲 |
+| P17 | bit15 | 右 Echo |
 
 ---
 
 ## 已尝试 & 失败的方案 (踩坑记录)
 
-### ❌ WS63 硬件 PWM
+### ❌ WS63 硬件 PWM (第一版)
 
-**尝试**：GPIO5(PWM5) + GPIO10(PWM2) 输出 PWM 调速。
+- SDK 预编译 `iot_pwm.c` 用 V150 API (`uapi_pwm_start`)，V151 硬件上是空函数
+- `hal_iot_pwm.c` 有正确 V151 代码，但两个预编译 `.a` 库重复定义 → 链接冲突
+- 引用 PWM 符号 → 链接器拉入 PWM 驱动 → 静态初始化破坏 WiFi 时钟 → WiFi 连不上
 
-**失败原因**：
-- WS63 使用 **V151 PWM 硬件**，正确 API 是 `uapi_pwm_open → uapi_pwm_set_group → uapi_pwm_start_group`
-- SDK 预编译的 `iot_pwm.c` 适配层用的是 **V150 API** (`uapi_pwm_start`)，在 V151 上是空函数
-- `hal_iot_pwm.c` 有正确的 V151 代码，但在两个预编译 `.a` 库中重复定义 (`libhal_iothardware.a` + `libnl63pro_peripheral.a`)，链接冲突
-- 任何引用了 PWM 符号的代码都会导致链接器拉入 PWM 驱动库，其静态初始化破坏 WiFi 时钟，导致 WiFi 连不上
+**最终方案**：依赖 `nl63pro_drivers`，使用板级 `hal_iot_pwm.c`（V151 正确实现），PWM 延迟初始化（第一条指令才初始化，不干扰 WiFi）。
 
 ### ❌ 直接 GPIO 使能 (ENA/ENB)
 
-**尝试**：GPIO5 + GPIO10 作为普通 GPIO 控制 ENA/ENB 通断。
+GPIO5 在 WS63 上没有 `IOT_IO_FUNC_GPIO_5_GPIO`，只能做 PWM/UART/SPI。
 
-**失败原因**：GPIO5 在 WS63 上没有 `IOT_IO_FUNC_GPIO_5_GPIO` 功能（仅 PWM5/UART2/SPI）。
+### ❌ I2C 盲目扫描
 
-### ❌ I2C 盲目扫描 (第一版)
+直接 `IoTI2cInit(0)` 后扫描 0x20-0x27 找不到设备——必须先 `IoSetFunc` 配置 GPIO15/16 为 I2C 功能。
 
-**尝试**：直接 `IoTI2cInit(0)` 后扫描 0x20-0x27。
-
-**失败原因**：WS63 的 I2C 信号必须先用 `IoSetFunc` 配置 GPIO15/16 的引脚复用为 I2C 功能，否则 I2C 控制器不会路由到物理引脚。
-
-### ✅ PCF8575 I2C (最终方案)
-
-**关键发现**：参考 `b5_oled_i2c` 和 `f7_HealthService/aht30_i2c_example`，WS63 的正确 I2C 初始化：
-
+**正确序列**（参考 `b5_oled_i2c` 和 `aht30_i2c_example`）：
 ```c
-IoTGpioInit(IOT_IO_NAME_GPIO_15);
-IoTGpioInit(IOT_IO_NAME_GPIO_16);
-IoSetFunc(IOT_IO_NAME_GPIO_15, IOT_IO_FUNC_GPIO_15_I2C1_SDA);
-IoSetFunc(IOT_IO_NAME_GPIO_16, IOT_IO_FUNC_GPIO_16_I2C1_SCL);
-IoTI2cInit(1, 100000);  // I2C 总线 1
+IoTGpioInit(GPIO15); IoSetFunc(GPIO15, IOT_IO_FUNC_GPIO_15_I2C1_SDA);
+IoTGpioInit(GPIO16); IoSetFunc(GPIO16, IOT_IO_FUNC_GPIO_16_I2C1_SCL);
+IoTI2cInit(1, 100000);
 ```
 
-### ❌ 遥控不稳定 (已修复)
+### ❌ 遥控不稳定 (手指按住不动就停)
 
-**症状**：按住摇杆不动 → 小车几秒后停止或锁死方向。
+`touchMove` 只在手指移动时触发。手指按住不动 → 无事件 → 不发指令。
 
-**根因**：微信小程序 `touchMove` 事件只在手指_移动_时触发。手指按住不动 → 无事件 → 不发新指令。
+**修复**：加 300ms `setInterval` 心跳，手指按下期间自动重发 `currentCmd`。
 
-**修复**：加 300ms 心跳定时器 (`setInterval`)，手指按下期间自动重发当前指令。
+### ❌ 小程序首次连接无法遥控
+
+`onReady` 自动连接上次保存的 IP → 旧连接状态异常。**修复**：改为手动输入 IP 点确定才连。
+
+### ❌ 超声波线程创建失败
+
+`osPriorityLow` 不在 WS63 允许范围（`osPriorityLow3` ~ `osPriorityHigh`）。**修复**：改用 `osPriorityLow3`。
+
+### ❌ 右超声波始终无数据
+
+PCF8575 P17 = bit15，但代码写了 `1U << 17` → 溢出 16 位被截断为 0。**修复**：`#define P_ECHO_R 15`。
+
+### ⚠️ 超声波精度有限 (已知限制)
+
+PCF8575 I2C 读一次 ~200us，而 Arduino `pulseIn()` 微秒级。计时分辨率 ~3.4cm，无法精确测距。**适合障碍检测，不适合精确测量。**
+
+### ⚠️ I2C 总线竞争
+
+`car_sonar_thread` 和 `car_main` 共享 I2C1 总线。**修复**：`osMutex` 保护所有 I2C 读写。
 
 ---
 
@@ -109,94 +146,80 @@ IoTI2cInit(1, 100000);  // I2C 总线 1
 
 ```
 微信小程序                        WS63 开发板
-┌───────────────┐   WebSocket    ┌─────────────────────┐
-│ index.js      │ ←──────────→  │ car_websocket.c      │
-│ 摇杆 + 心跳    │ ws://IP:8080  │ lwIP TCP Server     │
-│ (300ms 重发)   │               │ RFC 6455 + PING/PONG │
-└───────────────┘               │          ↓            │
-                                │ car.c                │
-                                │ PCF8575 I2C 驱动      │
-                                │ 6 路输出, 单次写入     │
-                                │ I2C 失败自动重试       │
-                                │          ↓            │
-                                │ car_wifi.c           │
-                                │ STA 模式 + DHCP       │
-                                │ 失败自动重连           │
-                                └─────────────────────┘
+┌─────────────────┐  WebSocket   ┌──────────────────────┐
+│ index.js        │ ←─────────→ │ car_websocket.c       │
+│ 摇杆 + 心跳      │ ws://IP:8080 │ lwIP TCP Server      │
+│ 超声波距离显示    │             │ PING/PONG 回复        │
+└─────────────────┘             │          ↓             │
+                   sonar JSON ← │ car_sonar_thread      │
+                   {type:sonar}  │ 500ms 测距            │
+                                │          ↓             │
+                                │ car_ultrasonic.c      │
+                                │ PCF8575 I2C pulseIn   │
+                                │          ↓             │
+                                │ car.c                 │
+                                │ PCF8575 方向 + PWM 调速 │
+                                │          ↓             │
+                                │ car_wifi.c            │
+                                │ STA + DHCP, 失败重连    │
+                                └──────────────────────┘
 ```
 
 ### 通信协议
 
-WebSocket 文本帧：`direction:speed`
+**小程序 → 小车** (WebSocket 文本帧)：
 
-| 指令 | 小车动作 | 说明 |
-|------|---------|------|
-| `forward:180` | 前进 | speed: 120(低速)/180(中速)/255(全速) |
+| 指令 | 动作 | 速度 |
+|------|------|------|
+| `forward:180` | 前进 | 锁车(120)/中速(180)/全速(255) |
 | `backward:180` | 后退 | 同上 |
-| `left:180` | 左前转 | 仅左侧前进 |
-| `right:180` | 右前转 | 仅右侧前进 |
-| `drift_l:255` | 左漂移 | 左侧后退+右侧前进 (原地旋转) |
-| `drift_r:255` | 右漂移 | 右侧后退+左侧前进 (原地旋转) |
-| `stop:0` | 停止 | 全部停机 |
+| `left:180` | 左转 | 同上 |
+| `right:180` | 右转 | 同上 |
+| `drift_l:255` | 左漂移 | 满速 |
+| `drift_r:255` | 右漂移 | 满速 |
+| `stop:0` | 停止 | 0 |
 
-> GPIO1(PWM1) + GPIO10(PWM2) 输出 PWM 调速。小程序三挡：锁车(0%) / 中速(70%) / 全速(100%)。
+**小车 → 小程序** (JSON)：
+
+```json
+{"type":"sonar","front":17,"back":55,"left":3,"right":10}
+```
+
+`0` = 无回波（无障碍或 >4m）。
 
 ---
 
 ## 编译 & 烧录
 
-### 前置条件
-
-- OpenHarmony 完整 SDK 环境
-- `hb` 构建工具
-- RISC-V 交叉编译工具链
-
-### 修改 WiFi 凭据
-
-编辑 `car/car_wifi.c`：
-
-```c
-#define CAR_WIFI_SSID       "你的手机热点名"
-#define CAR_WIFI_PASSWORD   "你的热点密码"
-#define CAR_WIFI_SEC_TYPE   WIFI_SEC_TYPE_WPA2PSK  // 根据实际加密类型修改
-```
-
-### 编译
-
 ```bash
-cd /path/to/openharmony
+# 修改 WiFi 凭据
+vim car/car_wifi.c  # CAR_WIFI_SSID / CAR_WIFI_PASSWORD
+
+# 编译
 hb build
+
+# 固件: out/nl63pro/nl63pro/
 ```
 
-固件输出路径：`out/nl63pro/nl63pro/`
-
-### 烧录
-
-使用串口工具 (HiBurn 或类似) 烧录 `.bin` 文件到 NL63pro。
-
-### 串口监控
-
-波特率 921600（或 115200），上电后关键日志：
+### 串口关键日志
 
 ```
-[CAR] PCF8575 OK (bus=1, addr=0x20)   ← I2C 通信正常
-[CAR_WIFI]::Got IP: 10.11.222.xxx     ← WiFi 获取 IP
-[CAR_WS]::Listening on port 8080      ← WebSocket 就绪
-[CAR_WS]::Client connected!           ← 小程序连上
-[CAR_WS]::Cmd: forward:180            ← 收到遥控指令
+[CAR] PCF8575 OK (bus=1, addr=0x20)   ← I2C 正常
+[SONAR] ready (P4=Trig, Echo P5/P6/P7/P17)  ← 超声波就绪
+[CAR] PWM ready (ch1+ch2)             ← PWM 就绪 (延迟初始化)
+[CAR_WIFI]::Got IP: 10.11.222.xxx     ← IP 地址
+[SONAR] {"type":"sonar","front":17,...}  ← 超声波数据
 ```
-
-如果看到 `PCF8575 no response!` → 检查 SDA/SCL 接线和模块供电。
 
 ---
 
 ## 使用
 
-1. **手机开热点** — 必须设置为 **2.4GHz** 频段 (WS63 不支持 5GHz)
-2. **开发板上电** — LED 亮起，等待串口打印 `Got IP: x.x.x.x`
-3. **微信开发者工具** 打开 `wechat/` 目录 (AppID: `wx0a9a37c4eb006536`)
-4. **点击顶部状态栏** → 输入串口显示的 IP 地址 → 确认
-5. **摇杆遥控** — 推方向行走，松手即停
+1. 手机开 **2.4GHz** 热点
+2. 开发板上电，串口看 IP
+3. 微信开发者工具打开 `wechat/` (AppID: `wx0a9a37c4eb006536`)
+4. 点击状态栏 → 输入 IP → 确定
+5. 摇杆遥控；界面下方显示四方向超声波距离
 
 ---
 
@@ -204,40 +227,36 @@ hb build
 
 ```
 car/
-├── car.c              # PCF8575 I2C 电机控制 + 指令解析
-├── car.h              # 电机控制 API 声明
-├── car_wifi.c         # WiFi STA 状态机 (扫描→连接→DHCP)
-├── car_wifi.h         # WiFi API 声明
+├── car.c              # 主控: PCF8575 方向 + PWM 调速 + sonar 线程
+├── car.h              # 电机控制 API
+├── car_ultrasonic.c   # 四路 HC-SR04 PCF8575 I2C 测距
+├── car_ultrasonic.h   # 超声波 API + I2C 互斥锁
+├── car_wifi.c         # WiFi STA (扫描→连接→DHCP, 失败重试)
+├── car_wifi.h
 ├── car_websocket.c    # RFC 6455 WebSocket Server (lwIP + mbedtls)
-├── car_websocket.h    # WebSocket API 声明
-└── BUILD.gn           # GN 构建配置
+├── car_websocket.h    # WebSocket API + car_websocket_send()
+└── BUILD.gn           # GN 构建 (nl63pro_drivers + mbedtls 依赖)
 
 wechat/
-├── app.js / app.json / app.wxss   # 小程序入口和全局配置
-├── index.js                       # 摇杆逻辑 + 心跳定时器
-├── index.wxml                     # UI 布局
-├── index.wxss                     # 暗色主题样式
+├── app.js / app.json / app.wxss
+├── index.js           # 摇杆 + 心跳 + onMessage 超声波解析
+├── index.wxml         # UI (摇杆 + 挡位 + 超声波显示)
+├── index.wxss         # 暗色主题
 ├── project.config.json
 └── project.private.config.json
 ```
-
----
 
 ## 技术要点
 
 | 方面 | 实现 |
 |------|------|
-| I2C 引脚 | GPIO15→SDA, GPIO16→SCL, 必须先 IoSetFunc 再 IoTI2cInit |
-| I2C 总线 | 总线 1, 速率 100kHz |
-| PCF8575 地址 | 0x20 (无地址跳线) |
-| PCF8575 写入 | 2 字节小端序, 每次指令只写一次 I2C, 失败自动重试 |
-| PWM 引脚 | GPIO1→PWM1(ENA), GPIO10→PWM2(ENB), NL63pro 板级驱动 |
-| PWM 调速 | 锁车 0% / 中速 70% / 全速 100%, 延迟初始化(第一条指令才初始化) |
-| WebSocket | mbedtls SHA1+Base64 握手, 支持 RFC 6455 掩码帧, PING→PONG 回复 |
-| 握手防吞帧 | 查找 `\r\n\r\n` 保存溢出数据到预读缓冲区 |
+| I2C | GPIO15(SDA)+GPIO16(SCL), bus=1, 100kHz, 先 IoSetFunc 再 IoTI2cInit |
+| PCF8575 | addr=0x20, 2字节小端序, osMutex 保护, 失败重试 |
+| WebSocket | mbedtls SHA1+Base64 握手, RFC 6455 掩码帧, PING→PONG, 预读缓冲防吞帧 |
+| PWM | GPIO1(PWM1)+GPIO10(PWM2), nl63pro_drivers, 延迟初始化, 锁车0%/中速70%/全速100% |
+| 超声波 | PCF8575 I2C 读, ~200us/轮, ~3.4cm 分辨率, 四路同时触发 |
 | 心跳 | 小程序 300ms setInterval, touchEnd 清除 |
-| I2C 容错 | 写入失败打印错误并重试一次 |
-| WiFi 安全 | 默认 WPA2-PSK, 可改为 WPA3/SAE |
+| 线程 | car_main(prio=normal, 8KB) + car_sonar(PrioLow3, 4KB) |
 
 ## License
 
