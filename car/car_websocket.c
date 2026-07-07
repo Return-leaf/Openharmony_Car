@@ -42,6 +42,8 @@
 /* 缓冲区大小 */
 #define WS_RECV_BUF_SIZE    512
 #define WS_HTTP_REQ_MAX     1024
+
+static int g_client_fd = -1;  /* 当前连接的客户端 fd */
 #define WS_PREBUF_SIZE      256   /* 握手后残留数据（如 PING 帧）的预读缓冲 */
 
 /* 预读缓冲：握手阶段 lwip_recv 可能读走 HTTP 头之后的 WebSocket 帧数据
@@ -384,10 +386,12 @@ int car_websocket_server_start(int port)
         }
 
         printf("%s::Client connected!\r\n", CAR_WS_LOG);
+        g_client_fd = client_fd;
 
         /* WebSocket 握手 */
         if (ws_handshake(client_fd) != 0) {
             printf("%s::Handshake failed, closing\r\n", CAR_WS_LOG);
+            g_client_fd = -1;
             lwip_close(client_fd);
             STOP();
             continue;
@@ -420,10 +424,18 @@ int car_websocket_server_start(int port)
         }
 
         printf("%s::Client disconnected\r\n", CAR_WS_LOG);
+        g_client_fd = -1;
         lwip_close(client_fd);
         STOP();  /* 安全停车 */
     }
 
     lwip_close(listen_fd);
     return -1;
+}
+
+/* 供外部模块（超声波等）向客户端发送文本帧 */
+int car_websocket_send(const char *msg)
+{
+    if (g_client_fd < 0 || msg == NULL) return -1;
+    return ws_send_text(g_client_fd, msg);
 }

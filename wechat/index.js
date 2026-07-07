@@ -6,7 +6,11 @@ Page({
     speedStyle: 'width: 70%;',
     gear: 180,
     driftMode: false,
-    lastCmdName: '停止'
+    lastCmdName: '停止',
+    sonarFront: '-',
+    sonarBack: '-',
+    sonarLeft: '-',
+    sonarRight: '-'
   },
 
   socket: null,
@@ -28,6 +32,19 @@ Page({
     if (!ip) { this.setData({ connected: false }); return; }
     this.socket = wx.connectSocket({ url: `ws://${ip}:8080` });
     this.socket.onOpen(() => this.setData({ connected: true }));
+    this.socket.onMessage((res) => {
+      try {
+        const d = JSON.parse(res.data);
+        if (d.type === 'sonar') {
+          this.setData({
+            sonarFront: d.front || '-',
+            sonarBack: d.back || '-',
+            sonarLeft: d.left || '-',
+            sonarRight: d.right || '-'
+          });
+        }
+      } catch (e) {}
+    });
     this.socket.onClose(() => {
       this.setData({ connected: false });
       setTimeout(() => this.initSocket(), 3000);

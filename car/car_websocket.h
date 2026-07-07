@@ -20,4 +20,11 @@
  */
 int car_websocket_server_start(int port);
 
+/**
+ * @brief  向当前连接的客户端发送文本帧（供超声波等模块调用）
+ * @param  msg  要发送的文本（null-terminated）
+ * @return 0=成功, -1=无客户端或发送失败
+ */
+int car_websocket_send(const char *msg);
+
 #endif /* CAR_WEBSOCKET_H */

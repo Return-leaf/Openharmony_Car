@@ -20,6 +20,7 @@
 #include "iot_pwm.h"
 #include "ohos_init.h"
 #include "car.h"
+#include "car_ultrasonic.h"
 #include "car_wifi.h"
 #include "car_websocket.h"
 
@@ -148,6 +149,8 @@ void car_main(void *arg)
         printf("[CAR] PCF8575 no response! Check wiring\r\n");
     }
 
+    ultrasonic_init();
+
     if (car_wifi_connect() != 0) {
         printf("[CAR] WiFi connect failed!\r\n");
         return;
@@ -155,6 +158,25 @@ void car_main(void *arg)
     printf("[CAR] WiFi connected, IP=%s\r\n", car_wifi_get_ip_str());
 
     car_websocket_server_start(8080);
+}
+
+/* 超声波测距 + JSON 上报线程 (每 500ms 一次) */
+static void car_sonar_thread(void *arg)
+{
+    (void)arg;
+    osDelay(300);  /* 等 WiFi+WS 就绪 */
+
+    while (1) {
+        int d[4];
+        ultrasonic_get_all(d);
+        char buf[128];
+        snprintf(buf, sizeof(buf),
+            "{\"type\":\"sonar\",\"front\":%d,\"back\":%d,\"left\":%d,\"right\":%d}",
+            d[0], d[1], d[2], d[3]);
+        printf("[SONAR] %s\r\n", buf);
+        car_websocket_send(buf);
+        osDelay(50);  /* 500ms */
+    }
 }
 
 static void car_example(void)
@@ -165,6 +187,14 @@ static void car_example(void)
     attr.priority   = osPriorityNormal;
     if (osThreadNew(car_main, NULL, &attr) == NULL) {
         printf("[CAR] Failed to create car_main thread!\r\n");
+    }
+
+    osThreadAttr_t attr2 = {0};
+    attr2.name       = "car_sonar";
+    attr2.stack_size = 4096;
+    attr2.priority   = osPriorityLow;
+    if (osThreadNew(car_sonar_thread, NULL, &attr2) == NULL) {
+        printf("[CAR] Failed to create sonar thread!\r\n");
     }
 }
 
