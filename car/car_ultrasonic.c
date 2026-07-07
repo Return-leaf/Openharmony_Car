@@ -19,7 +19,7 @@ static osMutexId_t g_i2c_mutex = NULL;
 #define P_ECHO_F 5
 #define P_ECHO_B 6
 #define P_ECHO_L 7
-#define P_ECHO_R 17
+#define P_ECHO_R 15  /* PCF8575 P17 = bit15 */
 #define M(p)     (1U << (p))
 #define M_ECHO   (M(P_ECHO_F) | M(P_ECHO_B) | M(P_ECHO_L) | M(P_ECHO_R))
 
