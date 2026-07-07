@@ -23,7 +23,7 @@ Page({
     if (savedIp) this.setData({ serverIp: savedIp });
   },
 
-  onReady() { this.initCoordinates(); this.initSocket(); },
+  onReady() { this.initCoordinates(); },
 
   /* ==================== WebSocket ==================== */
 

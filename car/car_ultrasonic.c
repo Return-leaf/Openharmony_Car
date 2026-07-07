@@ -8,6 +8,9 @@
 #include "car_ultrasonic.h"
 #include <stdio.h>
 #include "iot_i2c.h"
+#include "cmsis_os2.h"
+
+static osMutexId_t g_i2c_mutex = NULL;
 
 #define PCF8575_ADDR  0x20
 #define I2C_BUS       1
@@ -22,18 +25,27 @@
 
 static unsigned short g_echo_mask = 0;
 
+void i2c_lock(void)   { if (g_i2c_mutex) osMutexAcquire(g_i2c_mutex, osWaitForever); }
+void i2c_unlock(void) { if (g_i2c_mutex) osMutexRelease(g_i2c_mutex); }
+
 /* ------- PCF8575 读写 ------- */
 
 static int pcf_write(unsigned short val)
 {
+    i2c_lock();
     unsigned char d[2] = { val & 0xFF, (val >> 8) & 0xFF };
-    return (IoTI2cWrite(I2C_BUS, PCF8575_ADDR, d, 2) == 0) ? 0 : -1;
+    int ret = (IoTI2cWrite(I2C_BUS, PCF8575_ADDR, d, 2) == 0) ? 0 : -1;
+    i2c_unlock();
+    return ret;
 }
 
 static unsigned short pcf_read(void)
 {
+    i2c_lock();
     unsigned char d[2] = {0, 0};
-    if (IoTI2cRead(I2C_BUS, PCF8575_ADDR, d, 2) != 0) return 0;
+    int ret = IoTI2cRead(I2C_BUS, PCF8575_ADDR, d, 2);
+    i2c_unlock();
+    if (ret != 0) return 0;
     return d[0] | ((unsigned short)d[1] << 8);
 }
 
@@ -41,6 +53,7 @@ static unsigned short pcf_read(void)
 
 void ultrasonic_init(void)
 {
+    g_i2c_mutex = osMutexNew(NULL);
     /* Echo 引脚设输入模式 (写 1 = 高阻输入) */
     g_echo_mask = M_ECHO;
     pcf_write(M_ECHO);

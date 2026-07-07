@@ -39,9 +39,11 @@
 
 static int pcf8575_write(unsigned short val)
 {
+    i2c_lock();
     unsigned char d[2] = { val & 0xFF, (val >> 8) & 0xFF };
     unsigned int ret = IoTI2cWrite(I2C_BUS, PCF8575_ADDR, d, 2);
     if (ret != 0) printf("[PCF] I2C err=%u\r\n", ret);
+    i2c_unlock();
     return (ret == 0) ? 0 : -1;
 }
 

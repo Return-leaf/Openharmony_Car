@@ -11,6 +11,10 @@ void ultrasonic_init(void);
 /* 触发一次测量 + 读取四个方向距离 (cm)，0=无障碍/超时 */
 void ultrasonic_get_all(int dist[4]);
 
+/* I2C 互斥锁（car.c 的 pcf8575_write 也需要同一把锁） */
+void i2c_lock(void);
+void i2c_unlock(void);
+
 /* 传感器索引 */
 #define SONAR_FRONT  0
 #define SONAR_BACK   1
