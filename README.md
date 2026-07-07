@@ -1,6 +1,8 @@
-# OpenHarmony 小车 WebSocket 遥控
+# OpenHarmony 小车 WebSocket 遥控 (纯 GPIO 版)
 
-基于 OpenHarmony (WS63/NL63pro) 的 WiFi 小车，通过微信小程序摇杆实时遥控。
+基于 OpenHarmony (WS63/NL63pro) 的 WiFi 小车，通过 **4 路 GPIO 直驱** L298N/L9110S 电机驱动板，微信小程序摇杆实时遥控。
+
+> ⚠️ 这是纯 GPIO 版本。如需 PCF8575 I2C IO 扩展版本，请切换到 `PCF8575` 或 `main` 分支。
 
 ## 硬件
 
