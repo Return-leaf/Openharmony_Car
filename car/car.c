@@ -17,6 +17,7 @@
 #include "iot_gpio.h"
 #include "iot_gpio_ex.h"
 #include "iot_i2c.h"
+#include "iot_pwm.h"
 #include "ohos_init.h"
 #include "car.h"
 #include "car_wifi.h"
@@ -43,13 +44,53 @@ static int pcf8575_write(unsigned short val)
     return (ret == 0) ? 0 : -1;
 }
 
+/* ---------- PWM 调速: GPIO5(PWM5,ch5,grp2) + GPIO10(PWM2,ch2,grp1) ---------- */
+#define PWM_R  5   /* 右轮 */
+#define PWM_L  2   /* 左轮 */
+#define PWM_F  2000
+
+static int g_pwm_ok = 0;
+
+static void pwm_lazy_init(void)
+{
+    if (g_pwm_ok) return;
+    IoTGpioInit(IOT_IO_NAME_GPIO_5);
+    IoSetFunc(IOT_IO_NAME_GPIO_5, IOT_IO_FUNC_GPIO_5_PWM5_OUT);
+    IoTGpioInit(IOT_IO_NAME_GPIO_10);
+    IoSetFunc(IOT_IO_NAME_GPIO_10, IOT_IO_FUNC_GPIO_10_PWM2_OUT);
+    if (IoTPwmInit(PWM_R) != 0 || IoTPwmInit(PWM_L) != 0) {
+        printf("[CAR] PWM init fail!\r\n");
+        return;
+    }
+    g_pwm_ok = 1;
+    printf("[CAR] PWM ready (ch5+ch2)\r\n");
+}
+
+static unsigned short speed_to_duty(int speed)
+{
+    if (speed <= 0) return 0;
+    if (speed >= 255) return 100;
+    return (unsigned short)((speed * 100) / 255);
+}
+
+static void car_set_speed(int speed)
+{
+    unsigned short duty = speed_to_duty(speed);
+    printf("[CAR] Speed=%d -> duty=%u%%\r\n", speed, (unsigned)duty);
+    if (duty > 0) {
+        pwm_lazy_init();
+        if (g_pwm_ok) { IoTPwmStart(PWM_R, duty, PWM_F); IoTPwmStart(PWM_L, duty, PWM_F); }
+    } else {
+        if (g_pwm_ok) { IoTPwmStop(PWM_R); IoTPwmStop(PWM_L); }
+    }
+}
+
 static unsigned short g_dir = 0;
 
 static void car_flush(void)
 {
-    if (pcf8575_write(g_dir | M(P_ENA) | M(P_ENB)) != 0) {
-        /* 重试一次 */
-        pcf8575_write(g_dir | M(P_ENA) | M(P_ENB));
+    if (pcf8575_write(g_dir) != 0) {
+        pcf8575_write(g_dir);
     }
 }
 
@@ -72,26 +113,15 @@ void TANKLEFT(void)   { g_dir = M(P_IN2) | M(P_IN3); }
 void car_execute_command(const char *dir, int speed)
 {
     if (dir == NULL) return;
-    (void)speed;  /* 全速，暂不调速 */
 
-    if (strcmp(dir, "stop") == 0) {
-        STOP();
-    } else if (strcmp(dir, "forward") == 0) {
-        FORWARD();
-    } else if (strcmp(dir, "backward") == 0) {
-        BACK();
-    } else if (strcmp(dir, "left") == 0) {
-        LEFT();
-    } else if (strcmp(dir, "right") == 0) {
-        RIGHT();
-    } else if (strcmp(dir, "drift_l") == 0) {
-        TANKLEFT();
-    } else if (strcmp(dir, "drift_r") == 0) {
-        TANKRIGHT();
-    } else {
-        printf("[CAR] Unknown: %s:%d\r\n", dir, speed);
-        return;
-    }
+    if (strcmp(dir, "stop") == 0)         { car_set_speed(0);   STOP(); }
+    else if (strcmp(dir, "forward") == 0)  { car_set_speed(speed); FORWARD(); }
+    else if (strcmp(dir, "backward") == 0) { car_set_speed(speed); BACK(); }
+    else if (strcmp(dir, "left") == 0)     { car_set_speed(speed); LEFT(); }
+    else if (strcmp(dir, "right") == 0)    { car_set_speed(speed); RIGHT(); }
+    else if (strcmp(dir, "drift_l") == 0)  { car_set_speed(255); TANKLEFT(); }
+    else if (strcmp(dir, "drift_r") == 0)  { car_set_speed(255); TANKRIGHT(); }
+    else { printf("[CAR] Unknown: %s:%d\r\n", dir, speed); return; }
     car_flush();
 }
 

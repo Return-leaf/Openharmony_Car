@@ -39,11 +39,15 @@ static_library("car") {
 
     # ----- lwIP socket/netif API -----
     "//device/soc/hisilicon/ws63v100/sdk/open_source/lwip/lwip_v2.1.3/src/include",
+
+    # ----- PWM porting (NL63pro 板级) -----
+    "//device/soc/hisilicon/ws63v100/sdk/drivers/chips/ws63/porting/pwm",
   ]
 
   # mbedtls 的 include 路径由 deps 中的 public_configs 提供
   deps = [
     "//device/soc/hisilicon/ws63v100/adapter/hals/iot_hardware/wifiiot_lite:hal_iothardware",
     "//device/soc/hisilicon/ws63v100/sdk/open_source/mbedtls/mbedtls_v3.1.0:mbedtls_v3.1.0",
+    "//device/board/isoh/nl63pro/sdk/drivers:nl63pro_drivers",
   ]
 }
